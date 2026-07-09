@@ -1,0 +1,23 @@
+{
+  "name": "lamuna-qr-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@zxing/browser": "^0.1.5",
+    "jsqr": "^1.4.0",
+    "jszip": "^3.10.1",
+    "pako": "^2.1.0",
+    "qrcode-generator": "^1.4.4"
+  },
+  "devDependencies": {
+    "@types/pako": "^2.0.4",
+    "typescript": "^5.5.4",
+    "vite": "^8.1.4"
+  }
+}

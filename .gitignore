@@ -1,0 +1,34 @@
+node_modules/
+dist/
+.vite/
+
+*.log
+*.pid
+*.port
+
+.env
+.env.*
+
+# Local QR data and generated outputs should not be committed.
+data/
+web_generated_qr/
+generated_qr/
+Lamuna/
+
+# Company files and binary exports.
+*.zip
+*.xlsx
+*.xls
+*.csv
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.tif
+*.tiff
+*.dll
+*.exe
+
+# Keep generated source data that powers the static site.
+!src/templates.json
