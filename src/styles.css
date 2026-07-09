@@ -140,6 +140,17 @@ h1 {
   line-height: 1.45;
 }
 
+.file-status {
+  display: block;
+  width: min(100%, 280px);
+  margin: 2px auto 0;
+  color: var(--blue);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

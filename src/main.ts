@@ -40,6 +40,8 @@ const zipButton = document.querySelector<HTMLButtonElement>("#zipButton")!;
 const clearButton = document.querySelector<HTMLButtonElement>("#clearButton")!;
 const resultBody = document.querySelector<HTMLTableSectionElement>("#resultBody")!;
 const templateStatus = document.querySelector<HTMLParagraphElement>("#templateStatus")!;
+const oldFileStatus = document.querySelector<HTMLElement>("#oldFileStatus")!;
+const templateFileStatus = document.querySelector<HTMLElement>("#templateFileStatus")!;
 
 templateStatus.textContent = `已内置 ${builtInTemplates.length} 个新版本模板`;
 setMetric("templateCount", String(builtInTemplates.length));
@@ -60,6 +62,22 @@ function setFiles(input: HTMLInputElement, files: FileList): void {
   const transfer = new DataTransfer();
   Array.from(files).forEach((file) => transfer.items.add(file));
   input.files = transfer.files;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function formatFileStatus(files: FileList | null, emptyText: string): string {
+  const selected = Array.from(files ?? []);
+  if (selected.length === 0) {
+    return emptyText;
+  }
+  const shown = selected.slice(0, 3).map((file) => file.name).join("，");
+  const more = selected.length > 3 ? `，另有 ${selected.length - 3} 个` : "";
+  return `已选择 ${selected.length} 个文件：${shown}${more}`;
+}
+
+function updateFileStatuses(): void {
+  oldFileStatus.textContent = formatFileStatus(oldInput.files, "未选择旧二维码");
+  templateFileStatus.textContent = formatFileStatus(templateInput.files, "未选择补充模板");
 }
 
 function setupDropZone(zoneId: string, input: HTMLInputElement): void {
@@ -80,6 +98,9 @@ function setupDropZone(zoneId: string, input: HTMLInputElement): void {
 
 setupDropZone("#oldDropZone", oldInput);
 setupDropZone("#templateDropZone", templateInput);
+oldInput.addEventListener("change", updateFileStatuses);
+templateInput.addEventListener("change", updateFileStatuses);
+updateFileStatuses();
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -515,6 +536,7 @@ zipButton.addEventListener("click", async () => {
 clearButton.addEventListener("click", () => {
   oldInput.value = "";
   templateInput.value = "";
+  updateFileStatuses();
   clearResults();
   setMetric("templateCount", String(builtInTemplates.length));
   templateStatus.textContent = `已内置 ${builtInTemplates.length} 个新版本模板`;
