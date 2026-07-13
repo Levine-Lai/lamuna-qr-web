@@ -134,7 +134,9 @@ async function decodeWithZxing(url: string): Promise<string> {
   return text;
 }
 
-async function decodeWithJsQr(url: string): Promise<string> {
+type EnhancedQrDecoder = (imageData: ImageData) => Promise<string | null>;
+
+async function decodeWithJsQr(url: string, enhancedDecoder?: EnhancedQrDecoder): Promise<string> {
   const image = await loadImage(url);
   const source = document.createElement("canvas");
   const sourceScale = Math.min(1, 2800 / Math.max(image.naturalWidth, image.naturalHeight));
@@ -146,6 +148,23 @@ async function decodeWithJsQr(url: string): Promise<string> {
 
   type Crop = { x: number; y: number; width: number; height: number };
   const crops: Crop[] = [{ x: 0, y: 0, width: source.width, height: source.height }];
+
+  // Phone photos are commonly portrait while the QR itself is square. Sliding
+  // square windows avoid clipping a finder pattern with portrait-shaped crops.
+  const shortEdge = Math.min(source.width, source.height);
+  for (const fraction of [0.75, 0.55]) {
+    const size = Math.round(shortEdge * fraction);
+    const step = Math.max(1, Math.round(size * 0.55));
+    const xPositions = new Set<number>();
+    const yPositions = new Set<number>();
+    for (let x = 0; x < source.width - size; x += step) xPositions.add(x);
+    for (let y = 0; y < source.height - size; y += step) yPositions.add(y);
+    xPositions.add(Math.max(0, source.width - size));
+    yPositions.add(Math.max(0, source.height - size));
+    for (const y of yPositions) {
+      for (const x of xPositions) crops.push({ x, y, width: size, height: size });
+    }
+  }
 
   // Dense QR codes in phone photos often occupy only a small part of the image.
   // Overlapping crops preserve enough pixels per module without needing CV/WASM.
@@ -170,6 +189,15 @@ async function decodeWithJsQr(url: string): Promise<string> {
     if (!data) return null;
     const result = jsQR(data.data, data.width, data.height, { inversionAttempts: "attemptBoth" });
     if (result?.data) return result.data;
+
+    if (enhancedDecoder) {
+      try {
+        const decoded = await enhancedDecoder(data);
+        if (decoded) return decoded;
+      } catch {
+        // Continue with the lightweight ZXing fallback.
+      }
+    }
 
     const reader = codeReader as unknown as {
       decodeFromCanvas?: (canvas: HTMLCanvasElement) => Promise<{ getText?: () => string; text?: string }>;
@@ -267,23 +295,27 @@ async function decodeQrFile(file: File): Promise<string> {
         const { readBarcodes, prepareZXingModule } = await import("zxing-wasm/reader");
         const wasmUrl = new URL("zxing_reader.wasm", document.baseURI).href;
         prepareZXingModule({ overrides: { locateFile: () => wasmUrl } });
-        const results = await withTimeout(
-          readBarcodes(file, {
+        const decodeWithWasm = async (input: Blob | ImageData): Promise<string | null> => {
+          const results = await readBarcodes(input, {
             formats: ["QRCode"],
             tryHarder: true,
             tryRotate: true,
             tryInvert: true,
             tryDownscale: true,
             maxNumberOfSymbols: 1,
-          }),
-          20000,
-        );
-        const text = results[0]?.text;
+          });
+          return results[0]?.text ?? null;
+        };
+        const text = await withTimeout(decodeWithWasm(file), 20000);
         if (text) return text;
+        return await withTimeout(
+          decodeWithJsQr(url, (imageData) => withTimeout(decodeWithWasm(imageData), 5000)),
+          45000,
+        );
       } catch {
         // Continue with the image-enhancement fallback below.
       }
-      return await withTimeout(decodeWithJsQr(url), 30000);
+      return await withTimeout(decodeWithJsQr(url), 45000);
     }
   } finally {
     URL.revokeObjectURL(url);
