@@ -244,7 +244,9 @@ async function decodeQrFile(file: File): Promise<string> {
       return await decodeWithZxing(url);
     } catch {
       try {
-        const { readBarcodes } = await import("zxing-wasm/reader");
+        const { readBarcodes, prepareZXingModule } = await import("zxing-wasm/reader");
+        const wasmUrl = new URL("zxing_reader.wasm", document.baseURI).href;
+        prepareZXingModule({ overrides: { locateFile: () => wasmUrl } });
         const results = await readBarcodes(file, {
           formats: ["QRCode"],
           tryHarder: true,
