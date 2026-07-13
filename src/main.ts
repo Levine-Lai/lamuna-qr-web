@@ -46,6 +46,7 @@ const resultBody = document.querySelector<HTMLTableSectionElement>("#resultBody"
 const templateStatus = document.querySelector<HTMLParagraphElement>("#templateStatus")!;
 const oldFileStatus = document.querySelector<HTMLElement>("#oldFileStatus")!;
 const templateFileStatus = document.querySelector<HTMLElement>("#templateFileStatus")!;
+const actionStatus = document.querySelector<HTMLParagraphElement>("#actionStatus")!;
 
 templateStatus.textContent = `已内置 ${builtInTemplates.length} 个新版本模板`;
 setMetric("templateCount", String(builtInTemplates.length));
@@ -56,6 +57,9 @@ function setMetric(id: string, value: string): void {
 
 function setBusy(isBusy: boolean, text?: string): void {
   convertButton.disabled = isBusy;
+  convertButton.textContent = isBusy ? "正在生成..." : "生成新二维码";
+  actionStatus.classList.toggle("busy", isBusy);
+  actionStatus.textContent = isBusy ? text ?? "正在处理" : "就绪";
   zipButton.disabled = isBusy || !resultRows.some((row) => row.status === "ok");
   templateStatus.textContent = isBusy
     ? text ?? "处理中"
@@ -237,30 +241,49 @@ async function decodeWithJsQr(url: string): Promise<string> {
   throw new Error("没有识别到二维码，请尽量正对二维码拍摄并保持清晰");
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("识别超时")), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function decodeQrFile(file: File): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     try {
-      return await decodeWithZxing(url);
+      return await withTimeout(decodeWithZxing(url), 8000);
     } catch {
       try {
         const { readBarcodes, prepareZXingModule } = await import("zxing-wasm/reader");
         const wasmUrl = new URL("zxing_reader.wasm", document.baseURI).href;
         prepareZXingModule({ overrides: { locateFile: () => wasmUrl } });
-        const results = await readBarcodes(file, {
-          formats: ["QRCode"],
-          tryHarder: true,
-          tryRotate: true,
-          tryInvert: true,
-          tryDownscale: true,
-          maxNumberOfSymbols: 1,
-        });
+        const results = await withTimeout(
+          readBarcodes(file, {
+            formats: ["QRCode"],
+            tryHarder: true,
+            tryRotate: true,
+            tryInvert: true,
+            tryDownscale: true,
+            maxNumberOfSymbols: 1,
+          }),
+          20000,
+        );
         const text = results[0]?.text;
         if (text) return text;
       } catch {
         // Continue with the image-enhancement fallback below.
       }
-      return await decodeWithJsQr(url);
+      return await withTimeout(decodeWithJsQr(url), 30000);
     }
   } finally {
     URL.revokeObjectURL(url);
@@ -610,10 +633,14 @@ form.addEventListener("submit", async (event) => {
     const total = rows.length;
     const templateErrorNote = manual.errors.length ? `，${manual.errors.length} 个补充模板未读取` : "";
     templateStatus.textContent = `完成：${ok}/${total}${templateErrorNote}`;
+    actionStatus.textContent = ok === total ? `生成完成：${ok}/${total}` : `处理完成：成功 ${ok}，失败 ${total - ok}`;
   } catch (error) {
     templateStatus.textContent = error instanceof Error ? error.message : String(error);
+    actionStatus.textContent = `处理失败：${error instanceof Error ? error.message : String(error)}`;
   } finally {
     convertButton.disabled = false;
+    convertButton.textContent = "生成新二维码";
+    actionStatus.classList.remove("busy");
     zipButton.disabled = !resultRows.some((row) => row.status === "ok");
   }
 });
@@ -647,6 +674,8 @@ clearButton.addEventListener("click", () => {
   clearResults();
   setMetric("templateCount", String(builtInTemplates.length));
   templateStatus.textContent = `已内置 ${builtInTemplates.length} 个新版本模板`;
+  actionStatus.textContent = "就绪";
+  actionStatus.classList.remove("busy");
 });
 
 renderRows(resultRows);

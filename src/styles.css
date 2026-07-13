@@ -157,6 +157,20 @@ h1 {
   gap: 10px;
 }
 
+.action-status {
+  min-height: 22px;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.action-status.busy {
+  color: var(--blue);
+  font-weight: 700;
+}
+
 .primary,
 .secondary-button,
 .download-link {
