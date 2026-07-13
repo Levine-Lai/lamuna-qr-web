@@ -1,4 +1,5 @@
 import { BrowserQRCodeReader } from "@zxing/browser";
+import { DecodeHintType } from "@zxing/library";
 import jsQR from "jsqr";
 import JSZip from "jszip";
 import qrcode from "qrcode-generator";
@@ -28,7 +29,10 @@ type ResultRow = {
   url?: string;
 };
 
-const codeReader = new BrowserQRCodeReader();
+const decodeHints = new Map<DecodeHintType, unknown>([
+  [DecodeHintType.TRY_HARDER, true],
+]);
+const codeReader = new BrowserQRCodeReader(decodeHints);
 const resultRows: ResultRow[] = [];
 const activeUrls = new Set<string>();
 
@@ -128,23 +132,109 @@ async function decodeWithZxing(url: string): Promise<string> {
 
 async function decodeWithJsQr(url: string): Promise<string> {
   const image = await loadImage(url);
-  const canvas = document.createElement("canvas");
-  const scale = Math.min(1, 2200 / Math.max(image.naturalWidth, image.naturalHeight));
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) {
-    throw new Error("无法创建图片画布");
+  const source = document.createElement("canvas");
+  const sourceScale = Math.min(1, 2800 / Math.max(image.naturalWidth, image.naturalHeight));
+  source.width = Math.max(1, Math.round(image.naturalWidth * sourceScale));
+  source.height = Math.max(1, Math.round(image.naturalHeight * sourceScale));
+  const sourceCtx = source.getContext("2d", { willReadFrequently: true });
+  if (!sourceCtx) throw new Error("无法创建图片画布");
+  sourceCtx.drawImage(image, 0, 0, source.width, source.height);
+
+  type Crop = { x: number; y: number; width: number; height: number };
+  const crops: Crop[] = [{ x: 0, y: 0, width: source.width, height: source.height }];
+
+  // Dense QR codes in phone photos often occupy only a small part of the image.
+  // Overlapping crops preserve enough pixels per module without needing CV/WASM.
+  for (const fraction of [0.62, 0.42]) {
+    const width = Math.round(source.width * fraction);
+    const height = Math.round(source.height * fraction);
+    const positions = fraction > 0.5 ? [0, 0.5, 1] : [0, 1 / 3, 2 / 3, 1];
+    for (const py of positions) {
+      for (const px of positions) {
+        crops.push({
+          x: Math.round((source.width - width) * px),
+          y: Math.round((source.height - height) * py),
+          width,
+          height,
+        });
+      }
+    }
   }
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const result = jsQR(imageData.data, imageData.width, imageData.height, {
-    inversionAttempts: "attemptBoth",
-  });
-  if (!result?.data) {
-    throw new Error("没有识别到二维码");
+
+  const tryCanvas = async (canvas: HTMLCanvasElement): Promise<string | null> => {
+    const data = canvas.getContext("2d", { willReadFrequently: true })?.getImageData(0, 0, canvas.width, canvas.height);
+    if (!data) return null;
+    const result = jsQR(data.data, data.width, data.height, { inversionAttempts: "attemptBoth" });
+    if (result?.data) return result.data;
+
+    const reader = codeReader as unknown as {
+      decodeFromCanvas?: (canvas: HTMLCanvasElement) => Promise<{ getText?: () => string; text?: string }>;
+    };
+    try {
+      const decoded = await reader.decodeFromCanvas?.(canvas);
+      return decoded?.getText?.() ?? decoded?.text ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  for (const crop of crops) {
+    const scale = Math.min(3, 1500 / Math.max(crop.width, crop.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(crop.width * scale));
+    canvas.height = Math.max(1, Math.round(crop.height * scale));
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) continue;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
+
+    const plain = await tryCanvas(canvas);
+    if (plain) return plain;
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let min = 255;
+    let max = 0;
+    for (let index = 0; index < imageData.data.length; index += 4) {
+      const gray = Math.round(
+        imageData.data[index] * 0.299 + imageData.data[index + 1] * 0.587 + imageData.data[index + 2] * 0.114,
+      );
+      imageData.data[index] = gray;
+      imageData.data[index + 1] = gray;
+      imageData.data[index + 2] = gray;
+      min = Math.min(min, gray);
+      max = Math.max(max, gray);
+    }
+    const range = Math.max(1, max - min);
+    for (let index = 0; index < imageData.data.length; index += 4) {
+      const gray = Math.max(0, Math.min(255, Math.round(((imageData.data[index] - min) * 255) / range)));
+      imageData.data[index] = gray;
+      imageData.data[index + 1] = gray;
+      imageData.data[index + 2] = gray;
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    const contrasted = await tryCanvas(canvas);
+    if (contrasted) return contrasted;
+
+    // A few thresholds cover shadows and low contrast common in handheld photos.
+    for (const threshold of [96, 128, 160]) {
+      const binary = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+      for (let index = 0; index < binary.data.length; index += 4) {
+        const value = binary.data[index] < threshold ? 0 : 255;
+        binary.data[index] = value;
+        binary.data[index + 1] = value;
+        binary.data[index + 2] = value;
+      }
+      ctx.putImageData(binary, 0, 0);
+      const decoded = await tryCanvas(canvas);
+      if (decoded) return decoded;
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
-  return result.data;
+
+  throw new Error("没有识别到二维码，请尽量正对二维码拍摄并保持清晰");
 }
 
 async function decodeQrFile(file: File): Promise<string> {
@@ -153,6 +243,21 @@ async function decodeQrFile(file: File): Promise<string> {
     try {
       return await decodeWithZxing(url);
     } catch {
+      try {
+        const { readBarcodes } = await import("zxing-wasm/reader");
+        const results = await readBarcodes(file, {
+          formats: ["QRCode"],
+          tryHarder: true,
+          tryRotate: true,
+          tryInvert: true,
+          tryDownscale: true,
+          maxNumberOfSymbols: 1,
+        });
+        const text = results[0]?.text;
+        if (text) return text;
+      } catch {
+        // Continue with the image-enhancement fallback below.
+      }
       return await decodeWithJsQr(url);
     }
   } finally {
