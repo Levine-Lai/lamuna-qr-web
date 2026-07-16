@@ -173,7 +173,8 @@ h1 {
 
 .primary,
 .secondary-button,
-.download-link {
+.download-link,
+.copy-button {
   min-height: 42px;
   border-radius: 6px;
   padding: 9px 12px;
@@ -306,6 +307,24 @@ tbody tr:last-child td {
   background: #1f6f8b;
   color: #fff;
   padding: 7px 10px;
+}
+
+.copy-button {
+  min-height: 34px;
+  color: #15566d;
+  background: #fff;
+  border: 1px solid #8db7c6;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.copy-button:hover {
+  background: #edf7fa;
+}
+
+.copy-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 .preview {

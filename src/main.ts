@@ -537,6 +537,52 @@ function appendTextCell(tr: HTMLTableRowElement, text: string, className?: strin
   tr.appendChild(td);
 }
 
+async function convertBlobToPng(blob: Blob): Promise<Blob> {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("无法创建图片画布");
+    ctx.drawImage(bitmap, 0, 0);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (pngBlob) => (pngBlob ? resolve(pngBlob) : reject(new Error("图片转换失败"))),
+        "image/png",
+      );
+    });
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function copyResultImage(row: ResultRow, button: HTMLButtonElement): Promise<void> {
+  if (!row.blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+    throw new Error("当前浏览器不支持复制图片，请使用 Chrome 或 Edge");
+  }
+
+  button.disabled = true;
+  button.textContent = "复制中...";
+  actionStatus.textContent = `正在复制 ${row.outputFile}`;
+  try {
+    const pngPromise = convertBlobToPng(row.blob);
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": pngPromise })]);
+    button.textContent = "已复制";
+    actionStatus.textContent = `已复制到剪切板：${row.outputFile}`;
+  } catch (error) {
+    button.textContent = "复制失败";
+    const message = error instanceof Error ? error.message : String(error);
+    actionStatus.textContent = `复制失败：${message}`;
+    throw error;
+  } finally {
+    window.setTimeout(() => {
+      button.disabled = false;
+      button.textContent = "复制图片";
+    }, 1800);
+  }
+}
+
 function renderRows(rows: ResultRow[]): void {
   setMetric("totalCount", String(rows.length));
   setMetric("okCount", String(rows.filter((row) => row.status === "ok").length));
@@ -547,7 +593,7 @@ function renderRows(rows: ResultRow[]): void {
   if (rows.length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 9;
+    td.colSpan = 10;
     td.className = "empty";
     td.textContent = "等待上传旧二维码";
     tr.appendChild(td);
@@ -583,6 +629,22 @@ function renderRows(rows: ResultRow[]): void {
       downloadCell.className = "muted";
     }
     tr.appendChild(downloadCell);
+
+    const copyCell = document.createElement("td");
+    if (row.blob && row.outputFile) {
+      const button = document.createElement("button");
+      button.className = "copy-button";
+      button.type = "button";
+      button.textContent = "复制图片";
+      button.addEventListener("click", () => {
+        void copyResultImage(row, button).catch(() => undefined);
+      });
+      copyCell.appendChild(button);
+    } else {
+      copyCell.textContent = "-";
+      copyCell.className = "muted";
+    }
+    tr.appendChild(copyCell);
 
     const previewCell = document.createElement("td");
     if (row.url && row.outputFile) {
