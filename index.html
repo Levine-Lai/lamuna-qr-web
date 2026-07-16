@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lamuna 二维码换新版本</title>
+    <link rel="icon" href="data:," />
+    <script type="module" crossorigin src="./assets/index-DtQDG8J_.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D2m8IlHN.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Lamuna 二维码换新版本</h1>
+          <p id="templateStatus">正在加载模板库</p>
+        </div>
+        <button id="clearButton" class="icon-button" type="button" title="清空结果" aria-label="清空结果">
+          <span aria-hidden="true">×</span>
+        </button>
+      </header>
+
+      <section class="workspace">
+        <form id="convertForm" class="tool-panel">
+          <div class="drop-zone" id="oldDropZone">
+            <input id="oldFiles" name="oldFiles" type="file" accept="image/*" multiple required />
+            <label for="oldFiles">
+              <strong>旧二维码图片</strong>
+              <span>可多选，也可以把图片拖到这里</span>
+              <small id="oldFileStatus" class="file-status" aria-live="polite">未选择文件</small>
+            </label>
+          </div>
+
+          <div class="drop-zone secondary" id="templateDropZone">
+            <input id="templateFiles" name="templateFiles" type="file" accept="image/*" multiple />
+            <label for="templateFiles">
+              <strong>补充模板</strong>
+              <span>找不到内置模板时再上传同项目新版本二维码</span>
+              <small id="templateFileStatus" class="file-status" aria-live="polite">未选择文件</small>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button id="convertButton" class="primary" type="submit">生成新二维码</button>
+            <button id="zipButton" class="secondary-button" type="button" disabled>下载全部</button>
+          </div>
+          <p id="actionStatus" class="action-status" aria-live="assertive">就绪</p>
+        </form>
+
+        <section class="result-panel" aria-live="polite">
+          <div class="metrics">
+            <div><span>总数</span><strong id="totalCount">0</strong></div>
+            <div><span>成功</span><strong id="okCount">0</strong></div>
+            <div><span>失败</span><strong id="errorCount">0</strong></div>
+            <div><span>模板</span><strong id="templateCount">0</strong></div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>状态</th>
+                  <th>旧文件</th>
+                  <th>项目</th>
+                  <th>批号</th>
+                  <th>模板</th>
+                  <th>新文件</th>
+                  <th>下载</th>
+                  <th>复制</th>
+                  <th>预览</th>
+                  <th>详情</th>
+                </tr>
+              </thead>
+              <tbody id="resultBody">
+                <tr>
+                  <td colspan="10" class="empty">等待上传旧二维码</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+  </body>
+</html>
